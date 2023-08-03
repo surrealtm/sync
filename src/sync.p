@@ -17,35 +17,35 @@ Sync :: struct {
     client: Client;
 }
 
-sync_server :: (sync: *Sync) {
-    if !create_server(*sync.server) return;
+sync_server :: (sync: *Sync) -> u32 {
+    if !create_server(*sync.server) return -1;
 
-    while !sync.quit {
-        if !update_server(*sync.server) sync.quit = true;
-
+    while !sync.quit && sync.server.listener.status != .Closed {
+        update_server(*sync.server);
         Sleep(16);
     }
     
     destroy_server(*sync.server);
+    return 0;
 }
 
-sync_client :: (sync: *Sync) {
-    if !create_client(*sync.client, "localhost") return;
+sync_client :: (sync: *Sync) -> u32 {
+    if !create_client(*sync.client, "localhost") return -1;
 
-    while !sync.quit {
-        if !update_client(*sync.client) sync.quit = true;
-
+    while !sync.quit && sync.client.connection.status != .Closed {
+        update_client(*sync.client);
         Sleep(16);
     }
 
     destroy_client(*sync.client);
+    return 0;
 }
 
 sync :: (argcount: s64, args: *cstring) -> s64 {
     sync: Sync;
 
 #if BUILD_SERVER {
-    sync_server(*sync);
+    CreateThread(null, 0, sync_server, *sync, 0, null);
 }
 
 #if BUILD_CLIENT {
@@ -55,8 +55,8 @@ sync :: (argcount: s64, args: *cstring) -> s64 {
     return 0;
 }
 
-// The command to compile this application is:
-//   prometheus src/sync.p -o:run_tree/sync.exe
+// The command to compile and run this application is:
+//   prometheus src/sync.p -o:run_tree/sync.exe -run
 
 main :: (argcount: s64, args: *cstring) -> s64 {
     return sync(argcount, args);
