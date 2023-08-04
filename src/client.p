@@ -9,6 +9,7 @@ create_client :: (client: *Client, host: string) -> bool {
 
 destroy_client :: (client: *Client) {
     destroy_client_connection(*client.connection);
+    print("Destroyed the client.\n");
 }
 
 update_client :: (client: *Client) -> bool {

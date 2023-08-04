@@ -1,10 +1,12 @@
 // --- Modules
 #load "basic.p";
 #load "socket.p";
+#load "threads.p";
 
 // --- Project Source Files
 #load "server.p";
 #load "client.p";
+#load "commands.p";
 
 BUILD_SERVER :: true;
 BUILD_CLIENT :: true;
@@ -15,7 +17,12 @@ Sync :: struct {
     quit: bool;
     server: Server;
     client: Client;
+
+    server_thread: Thread;
+    client_thread: Thread;
 }
+
+
 
 sync_server :: (sync: *Sync) -> u32 {
     if !create_server(*sync.server) return -1;
@@ -44,13 +51,32 @@ sync_client :: (sync: *Sync) -> u32 {
 sync :: (argcount: s64, args: *cstring) -> s64 {
     sync: Sync;
 
+    // Disable the input echo mode, since we will echo input back to the user ourselves.
+    SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+
+    // Create the threads for the server and the client. Later on, these should probably be created dynamically,
+    // maybe defined by some config whether to start the server / client.
 #if BUILD_SERVER {
-    CreateThread(null, 0, sync_server, *sync, 0, null);
+    sync.server_thread = create_thread(sync_server, *sync);
 }
 
 #if BUILD_CLIENT {
-    sync_client(*sync);
+    sync.client_thread = create_thread(sync_client, *sync);
 }
+
+    // The main thread just waits for command input from the user until the user quits the application.
+    while !sync.quit {
+        input := read_line_from_stdin();
+        print("> '%'\n", input);
+        parse_command(*sync, input);
+    }
+
+    // Since the main thread only terminates when the quit variable of the sync state is false, both of these
+    // threads (if they were ever actually created) should also terminate any time now.
+    print("Exiting sync...\n");
+    join_thread(*sync.server_thread);
+    join_thread(*sync.client_thread);
+    print("Goodbye.\n");
     
     return 0;
 }
