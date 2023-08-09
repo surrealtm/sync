@@ -7,11 +7,12 @@
 #load "server.p";
 #load "client.p";
 #load "commands.p";
+#load "messages.p";
 
 BUILD_SERVER :: true;
 BUILD_CLIENT :: true;
 
-SYNC_PORT :: 9876;
+SYNC_PORT :: 0xfefe;
 
 Sync :: struct {
     quit: bool;
@@ -37,14 +38,14 @@ sync_server :: (sync: *Sync) -> u32 {
 }
 
 sync_client :: (sync: *Sync) -> u32 {
-    if !create_client(*sync.client, "localhost") return -1;
+    if !connect_client(*sync.client, "localhost") return -1;
 
     while !sync.quit && sync.client.connection.status != .Closed {
         update_client(*sync.client);
         Sleep(16);
     }
 
-    destroy_client(*sync.client);
+    disconnect_client(*sync.client);
     return 0;
 }
 

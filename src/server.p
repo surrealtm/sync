@@ -11,13 +11,17 @@ create_server :: (server: *Server) -> bool {
 }
 
 destroy_server :: (server: *Server) {
-    destroy_server_connection(*server.listener);
+    destroy_connection(*server.listener);
     print("Destroyed the server.\n");
 }
 
 update_server :: (server: *Server) {
+    if server.listener.status == .Closed return;
+
     incoming, success := accept_incoming_client_connection(*server.listener);
     if !success return;
     
-    print("Connected to client.\n");
+    print("Connected to remote client.\n");
+
+    send_create_file_message(*incoming, .{ 1, 9876, "test.txt" });
 }
