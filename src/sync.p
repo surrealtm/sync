@@ -8,6 +8,7 @@
 #load "client.p";
 #load "commands.p";
 #load "messages.p";
+#load "registry.p";
 
 BUILD_SERVER :: true;
 BUILD_CLIENT :: true;
@@ -38,14 +39,14 @@ sync_server :: (sync: *Sync) -> u32 {
 }
 
 sync_client :: (sync: *Sync) -> u32 {
-    if !connect_client(*sync.client, "localhost") return -1;
+    if !create_client(*sync.client) return -1;
 
     while !sync.quit && sync.client.connection.status != .Closed {
         update_client(*sync.client);
         Sleep(16);
     }
 
-    disconnect_client(*sync.client);
+    destroy_client(*sync.client);
     return 0;
 }
 

@@ -1,7 +1,30 @@
 Client :: struct {
     connection: Virtual_Connection;
     message_callbacks: Message_Callbacks;
+    registry: File_Registry;
 }
+
+
+/* General client setup, called once */
+
+create_client :: (client: *Client) -> bool {
+    create_file_registry(*client.registry, "run_tree/client");
+    return connect_client(client, "localhost");
+}
+
+destroy_client :: (client: *Client) {
+    disconnect_client(client);
+    destroy_file_registry(*client.registry);
+}
+
+update_client :: (client: *Client) {
+    if client.connection.status == .Closed return;
+    
+    while read_packet(*client.connection) parse_all_packet_messages(*client.connection.incoming_packet, *client.message_callbacks);
+}
+
+
+/* Network management */
 
 connect_client :: (client: *Client, host: string) -> bool {
     client.message_callbacks.user_pointer   = client;
@@ -22,16 +45,24 @@ disconnect_client :: (client: *Client) {
     print("Destroyed the client.\n");
 }
 
-update_client :: (client: *Client) {
-    if client.connection.status == .Closed return;
-    
-    while read_packet(*client.connection) parse_all_packet_messages(*client.connection.incoming_packet, *client.message_callbacks);
-}
-
 
 
 /* Message Callbacks */
 
 client_on_create_file :: (client: *Client, message: *Create_File_Message) {
-    print("Creating file on client: '%' ('%', % bytes).\n", message.file_path, message.file_id, message.file_size);
+    entry := get_file_entry_by_id(*client.registry, message.file_id);
+
+    if !entry {
+        entry = create_file_entry(*client.registry);
+        entry.file_id = message.file_id;
+        entry.file_size = message.file_size;
+        entry.file_path = copy_string(message.file_path, Default_Allocator);
+        print("Creating the local file '%' ('%', % bytes).\n", message.file_path, message.file_id, message.file_size);
+    } else {
+        entry.file_size = message.file_size;
+        entry.file_path = copy_string(message.file_path, Default_Allocator);
+        print("Replacing the local file '%'\n", entry.file_path);
+    }
+
+    write_file(entry.file_path, "", false); // Create an empty new file
 }

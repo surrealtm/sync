@@ -4,7 +4,7 @@
 MESSAGE_ID_TYPE :: u32;
 
 Create_File_Message :: struct {
-    file_id:   s64;
+    file_id:   File_Id;
     file_size: u64;
     file_path: string;
 }
