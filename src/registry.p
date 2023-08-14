@@ -15,6 +15,8 @@ File_Registry :: struct {
 create_file_registry :: (registry: *File_Registry, scratch_arena: *Memory_Arena, folder: string) {
     registry.scratch_arena = scratch_arena;
     registry.folder_path   = folder;
+
+    create_folder(registry.folder_path); // Make sure the registry folder actually exists, so that future io operations can just assume this is the case
 }
 
 destroy_file_registry :: (registry: *File_Registry) {

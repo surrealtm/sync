@@ -27,9 +27,10 @@ update_client :: (client: *Client) {
 /* Network management */
 
 connect_client :: (client: *Client, host: string) -> bool {
-    client.message_callbacks.user_pointer   = client;
-    client.message_callbacks.on_create_file = client_on_create_file;
-
+    client.message_callbacks.user_pointer    = client;
+    client.message_callbacks.on_create_file  = client_on_create_file;
+    client.message_callbacks.on_file_content = client_on_file_content;
+    
     success := create_client_connection(*client.connection, .TCP, host, SYNC_PORT);
     if !success return false;
 
@@ -54,10 +55,10 @@ client_on_create_file :: (client: *Client, message: *Create_File_Message) {
 
     if !entry {
         entry = create_file_entry(*client.registry);
-        entry.file_id = message.file_id;
+        entry.file_id   = message.file_id;
         entry.file_size = message.file_size;
-        entry.file_path = copy_string(message.file_path, Default_Allocator);
-        print("Creating the local file '%' ('%', % bytes).\n", message.file_path, message.file_id, message.file_size);
+        entry.file_path = copy_string(get_registry_file_path(*client.registry, message.file_path), Default_Allocator);
+        print("Creating the local file '%' ('%', % bytes).\n", entry.file_path, entry.file_id, entry.file_size);
     } else {
         entry.file_size = message.file_size;
         entry.file_path = copy_string(message.file_path, Default_Allocator);
@@ -65,4 +66,9 @@ client_on_create_file :: (client: *Client, message: *Create_File_Message) {
     }
 
     write_file(entry.file_path, "", false); // Create an empty new file
+}
+
+client_on_file_content :: (client: *Client, message: *File_Content_Message) {
+    entry := get_file_entry_by_id(*client.registry, message.file_id);
+    
 }
