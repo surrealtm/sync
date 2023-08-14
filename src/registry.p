@@ -7,14 +7,14 @@ File_Entry :: struct {
 }
 
 File_Registry :: struct {
-    scratch_allocator: *Allocator;
+    scratch_arena: *Memory_Arena;
     folder_path: string;
     entries: [..]File_Entry;
 }
 
-create_file_registry :: (registry: *File_Registry, scratch_allocator: *Allocator, folder: string) {
-    register.scratch_allocator = scratch_allocator;
-    registry.folder_path = folder;
+create_file_registry :: (registry: *File_Registry, scratch_arena: *Memory_Arena, folder: string) {
+    registry.scratch_arena = scratch_arena;
+    registry.folder_path   = folder;
 }
 
 destroy_file_registry :: (registry: *File_Registry) {
@@ -25,11 +25,11 @@ destroy_file_registry :: (registry: *File_Registry) {
 
 get_registry_file_path :: (registry: *File_Registry, file_path: string) -> string {
     builder: String_Builder;
-    create_string_builder(*builder, registry.scratch_allocator);
+    create_string_builder(*builder, registry.scratch_arena);
     append_string(*builder, registry.folder_path);
     append_character(*builder, '/');
     append_string(*builder, file_path);
-    return finish_string_builder(*builder, file_path);
+    return finish_string_builder(*builder);
 }
 
 

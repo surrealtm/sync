@@ -1,12 +1,16 @@
 /* Below this are the structures that define the messages that this application uses. They are used to share
  * and synchronize data between the different endpoints, and therefore need to be identical on all of them. */
 
-MESSAGE_ID_TYPE :: u32;
-
 Create_File_Message :: struct {
     file_id:   File_Id;
     file_size: u64;
     file_path: string;
+}
+
+File_Content_Message :: struct {
+    file_id: File_Id; // The file id of the registry, used to identify what file this data is for. This avoids having to send platform-dependent file paths over the network
+    file_offset: u64; // The byte-offset position inside the file where the data should be inserted. Used to detect gaps in the sent data, though that should theoretically never occur
+    file_data: string; // The actual bytes of the file. The array is sized to exactly fit the number of bytes sent in this message
 }
 
 
@@ -17,18 +21,34 @@ Create_File_Message :: struct {
  * inside the meta-program, once that is powerful enough to handle it. Until then, this will be updated
  * manually. */
 
+
+// Eventually, this enum should be sized to barely fit all elements, e.g. right now a u8 would suffice. Since
+// enums currently do not support changing the internal bit representation, this will have to wait.
+Message_Id :: enum {
+    Create_File  :: 1;
+    File_Content :: 2;
+}
+
 Message_Callbacks :: struct {
     user_pointer: *void;
     on_create_file: (*void, *Create_File_Message);
+    on_file_content: (*void, *File_Content_Message);
 }
 
-CREATE_FILE_MESSAGE_ID: MESSAGE_ID_TYPE : 1;
 
 packet_write_create_file_message :: (packet: *Packet, message: *Create_File_Message) {
-    packet_write(packet, CREATE_FILE_MESSAGE_ID);
+    packet_write(packet, Message_Id.Create_File);
     packet_write(packet, message.file_id);
     packet_write(packet, message.file_size);
     packet_write_string(packet, message.file_path);
+}
+
+packet_read_create_file_message :: (packet: *Packet) -> Create_File_Message {
+    message: Create_File_Message = ---;
+    message.file_id   = packet_read(packet, File_Id);
+    message.file_size = packet_read(packet, u64);
+    message.file_path = packet_read_string_view(packet);
+    return message;
 }
 
 send_create_file_message :: (connection: *Virtual_Connection, message: Create_File_Message) {
@@ -37,11 +57,19 @@ send_create_file_message :: (connection: *Virtual_Connection, message: Create_Fi
     send_packet(connection, *packet);
 }
 
-packet_read_create_file_message :: (packet: *Packet) -> Create_File_Message {
-    message: Create_File_Message = ---;
-    message.file_id   = packet_read(packet, s64);
-    message.file_size = packet_read(packet, u64);
-    message.file_path = packet_read_string_view(packet);
+
+packet_write_file_content_message :: (packet: *Packet, message: *File_Content_Message) {
+    packet_write(packet, Message_Id.File_Content);
+    packet_write(packet, message.file_id);
+    packet_write(packet, message.file_offset);
+    packet_write_string(packet, message.file_data); // Write the data byte-wise
+}
+
+packet_read_file_content_message :: (packet: *Packet) -> File_Content_Message {
+    message: File_Content_Message = ---;
+    message.file_id     = packet_read(packet, File_Id);
+    message.file_offset = packet_read(packet, u64);
+    message.file_data   = packet_read_string_view(packet);
     return message;
 }
 
@@ -50,13 +78,17 @@ parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
     packet_body_size := packet.header.packet_size - PACKET_HEADER_SIZE;
 
     while packet.body_offset < packet_body_size {
-        message_id := packet_read(packet, MESSAGE_ID_TYPE);
+        message_id: Message_Id = packet_read(packet, Message_Id);
 
         switch message_id {
-        case CREATE_FILE_MESSAGE_ID;
+        case .Create_File;
             message: Create_File_Message = packet_read_create_file_message(packet);
             callbacks.on_create_file(callbacks.user_pointer, *message);
 
+        case .File_Content;
+            message: File_Content_Message = packet_read_file_content_message(packet);
+            callbacks.on_file_content(callbacks.user_pointer, *message);
+            
         case;
             print("Invalid message id, cannot parse: %\n", message_id);
             packet.body_offset = packet_body_size; // Skip to the end of the packet so that the outer while loop exits

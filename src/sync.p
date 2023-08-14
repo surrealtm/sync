@@ -2,6 +2,7 @@
 #load "basic.p";
 #load "socket.p";
 #load "threads.p";
+#load "string_builder.p";
 
 // --- Project Source Files
 #load "server.p";
@@ -22,6 +23,9 @@ Sync :: struct {
 
     server_thread: Thread;
     client_thread: Thread;
+
+    scratch_arena:  Memory_Arena;
+    scratch_allocator: Allocator;
 }
 
 
@@ -39,7 +43,7 @@ sync_server :: (sync: *Sync) -> u32 {
 }
 
 sync_client :: (sync: *Sync) -> u32 {
-    if !create_client(*sync.client) return -1;
+    if !create_client(*sync.client, *sync.scratch_arena) return -1;
 
     while !sync.quit && sync.client.connection.status != .Closed {
         update_client(*sync.client);
@@ -53,6 +57,10 @@ sync_client :: (sync: *Sync) -> u32 {
 sync :: (argcount: s64, args: *cstring) -> s64 {
     sync: Sync;
 
+    // Set up memory management
+    create_memory_arena(*sync.scratch_arena, 4 * MEGABYTES);
+    sync.scratch_allocator = memory_arena_allocator(*sync.scratch_arena);
+    
     // Disable the input echo mode, since we will echo input back to the user ourselves.
     SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
 

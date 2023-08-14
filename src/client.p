@@ -7,8 +7,8 @@ Client :: struct {
 
 /* General client setup, called once */
 
-create_client :: (client: *Client) -> bool {
-    create_file_registry(*client.registry, "run_tree/client");
+create_client :: (client: *Client, scratch_arena: *Memory_Arena) -> bool {
+    create_file_registry(*client.registry, scratch_arena, "run_tree/client");
     return connect_client(client, "localhost");
 }
 
