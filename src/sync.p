@@ -31,7 +31,7 @@ Sync :: struct {
 
 
 sync_server :: (sync: *Sync) -> u32 {
-    if !create_server(*sync.server) return -1;
+    if !create_server(*sync.server, *sync.scratch_arena) return -1;
 
     while !sync.quit && sync.server.listener.status != .Closed {
         update_server(*sync.server);

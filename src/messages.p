@@ -14,6 +14,28 @@ File_Content_Message :: struct {
 }
 
 
+send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *File_Entry) {
+    content, success := read_file(get_registry_file_path(registry, file.file_path));
+    defer free_file_data(content);
+
+    if !success {
+        print("Failed to read local file '%' for transfer.\n", file.file_path);
+        return;
+    }
+    
+    send_create_file_message(connection, .{ file.file_id, file.file_size, file.file_path });
+
+    content_offset := 0;
+    batch_size := 1; //PACKET_BODY_SIZE - 24; // 24 Bytes are required for the file content message itself (file id, offset, and byte count)
+
+    while content_offset < content.count {
+        message_size := min(content.count - content_offset, batch_size);
+        send_file_content_message(connection, .{ file.file_id, content_offset, substring_view(content, content_offset, content_offset + message_size) });
+        content_offset += message_size;
+    }    
+}
+
+
 /* Below this is the boilerplate code for serialization code for the above defined messages. It implements
  * writing messages to packets and reading messages back from packets, as well as code to automatically
  * detect all messages in a packet and call the appropriate callback on them. 

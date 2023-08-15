@@ -1,8 +1,11 @@
 Server :: struct {
     listener: Virtual_Connection;
+    registry: File_Registry;
 }
 
-create_server :: (server: *Server) -> bool {
+create_server :: (server: *Server, scratch_arena: *Memory_Arena) -> bool {
+    create_file_registry(*server.registry, scratch_arena, "run_tree/server");
+
     success := create_server_connection(*server.listener, .TCP, SYNC_PORT);    
     if !success return false;
 
@@ -12,6 +15,7 @@ create_server :: (server: *Server) -> bool {
 
 destroy_server :: (server: *Server) {
     destroy_connection(*server.listener);
+    destroy_file_registry(*server.registry);
     print("Destroyed the server.\n");
 }
 
@@ -23,8 +27,6 @@ update_server :: (server: *Server) {
     
     print("Connected to remote client.\n");
 
-
-    file_content := "Hello World, how are you doing";
-    send_create_file_message(*incoming, .{ 1, file_content.count, "test.txt" });
-    send_file_content_message(*incoming, .{ 1, 0, file_content });
+    fake_entry := File_Entry.{ 1, 32, "test.txt" };
+    send_file(*incoming, *server.registry, *fake_entry);
 }
