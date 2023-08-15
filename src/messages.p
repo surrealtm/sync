@@ -73,10 +73,16 @@ packet_read_file_content_message :: (packet: *Packet) -> File_Content_Message {
     return message;
 }
 
+send_file_content_message :: (connection: *Virtual_Connection, message: File_Content_Message) {
+    packet: Packet;
+    packet_write_file_content_message(*packet, *message);
+    send_packet(connection, *packet);
+}
+
 
 parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
     packet_body_size := packet.header.packet_size - PACKET_HEADER_SIZE;
-
+    
     while packet.body_offset < packet_body_size {
         message_id: Message_Id = packet_read(packet, Message_Id);
 
@@ -90,7 +96,7 @@ parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
             callbacks.on_file_content(callbacks.user_pointer, *message);
             
         case;
-            print("Invalid message id, cannot parse: %\n", message_id);
+            print("Invalid message id, no messages defined with id: %\n", cast(s64) message_id);
             packet.body_offset = packet_body_size; // Skip to the end of the packet so that the outer while loop exits
         }
     }

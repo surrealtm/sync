@@ -23,5 +23,8 @@ update_server :: (server: *Server) {
     
     print("Connected to remote client.\n");
 
-    send_create_file_message(*incoming, .{ 1, 9876, "test.txt" });
+
+    file_content := "Hello World, how are you doing";
+    send_create_file_message(*incoming, .{ 1, file_content.count, "test.txt" });
+    send_file_content_message(*incoming, .{ 1, 0, file_content });
 }
