@@ -20,6 +20,7 @@ create_server :: (server: *Server, scratch_arena: *Memory_Arena, scratch_allocat
     // Other message types which are not allowed from the client to the server do not need to be handled
     // here, therefore they do not require a callback.
     server.message_callbacks.on_file_request = server_on_file_request;
+    server.message_callbacks.on_sync_request = server_on_sync_request;
     
     create_file_registry(*server.registry, scratch_arena, scratch_allocator, "run_tree/server");
     register_loose_files(*server.registry);
@@ -80,5 +81,12 @@ server_on_file_request :: (data: *Server_Callback_Data, message: *File_Request_M
         send_file(data.client, *data.server.registry, file);
     } else {
         print("Remote requested file '%', which is not in the local registry.\n", message.file_path);
+    }
+}
+
+server_on_sync_request :: (data: *Server_Callback_Data, message: *Sync_Request_Message) {
+    for i := 0; i < data.server.registry.entries.count; ++i {
+        entry := array_get(*data.server.registry.entries, i);
+        send_file_info_message(data.client, .{ entry.file_id, entry.file_size, entry.file_path, false });
     }
 }

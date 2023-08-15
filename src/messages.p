@@ -1,10 +1,11 @@
 /* Below this are the structures that define the messages that this application uses. They are used to share
  * and synchronize data between the different endpoints, and therefore need to be identical on all of them. */
 
-Create_File_Message :: struct {
+File_Info_Message :: struct {
     file_id:   File_Id;
     file_size: u64;
     file_path: string;
+    truncate_file: bool; // This flag indicates whether or not the receiver should truncate the local file. The file should be truncated if data will follow this message, e.g. when the file was actually requested to local. If this is just a synchronisation of the file registries, then the actual file system should not be touched, and this flag is set to false
 }
 
 File_Content_Message :: struct {
@@ -20,6 +21,10 @@ File_Request_Message :: struct {
     file_path: string;
 }
 
+Sync_Request_Message :: struct {
+    unused: u64; // The compiler currently does not like empty structs, so just throw this in here
+}
+
 
 send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *File_Entry) {
     content, success := read_file(get_registry_file_path(registry, file.file_path));
@@ -30,10 +35,10 @@ send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *
         return;
     }
     
-    send_create_file_message(connection, .{ file.file_id, file.file_size, file.file_path });
+    send_file_info_message(connection, .{ file.file_id, file.file_size, file.file_path, true });
 
     content_offset := 0;
-    batch_size := 1; //PACKET_BODY_SIZE - 24; // 24 Bytes are required for the file content message itself (file id, offset, and byte count)
+    batch_size := PACKET_BODY_SIZE - 24; // 24 Bytes are required for the file content message itself (file id, offset, and byte count)
 
     while content_offset < content.count {
         message_size := min(content.count - content_offset, batch_size);
@@ -44,6 +49,10 @@ send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *
 
 request_file :: (connection: *Virtual_Connection, file_path: string) {
     send_file_request_message(connection, .{ file_path } );
+}
+
+sync_file_registry :: (connection: *Virtual_Connection) {
+    send_sync_request_message(connection, .{ 0 } );
 }
 
 
@@ -59,37 +68,41 @@ request_file :: (connection: *Virtual_Connection, file_path: string) {
 // Eventually, this enum should be sized to barely fit all elements, e.g. right now a u8 would suffice. Since
 // enums currently do not support changing the internal bit representation, this will have to wait.
 Message_Id :: enum {
-    Create_File  :: 1; // @Cleanup rename to File_Create or something?
+    File_Info    :: 1;
     File_Content :: 2;
     File_Request :: 3;
+    Sync_Request :: 4;
 }
 
 Message_Callbacks :: struct {
     user_pointer:     *void;
-    on_create_file:  (*void, *Create_File_Message);
+    on_file_info:    (*void, *File_Info_Message);
     on_file_content: (*void, *File_Content_Message);
     on_file_request: (*void, *File_Request_Message);
+    on_sync_request: (*void, *Sync_Request_Message);
 }
 
 
-packet_write_create_file_message :: (packet: *Packet, message: *Create_File_Message) {
-    packet_write(packet, Message_Id.Create_File);
+packet_write_file_info_message :: (packet: *Packet, message: *File_Info_Message) {
+    packet_write(packet, Message_Id.File_Info);
     packet_write(packet, message.file_id);
     packet_write(packet, message.file_size);
     packet_write_string(packet, message.file_path);
+    packet_write(packet, message.truncate_file);
 }
 
-packet_read_create_file_message :: (packet: *Packet) -> Create_File_Message {
-    message: Create_File_Message = ---;
+packet_read_file_info_message :: (packet: *Packet) -> File_Info_Message {
+    message: File_Info_Message = ---;
     message.file_id   = packet_read(packet, File_Id);
     message.file_size = packet_read(packet, u64);
     message.file_path = packet_read_string_view(packet);
+    message.truncate_file = packet_read(packet, bool);
     return message;
 }
 
-send_create_file_message :: (connection: *Virtual_Connection, message: Create_File_Message) {
+send_file_info_message :: (connection: *Virtual_Connection, message: File_Info_Message) {
     packet: Packet;
-    packet_write_create_file_message(*packet, *message);
+    packet_write_file_info_message(*packet, *message);
     send_packet(connection, *packet);
 }
 
@@ -134,6 +147,22 @@ send_file_request_message :: (connection: *Virtual_Connection, message: File_Req
 }
 
 
+packet_write_sync_request_message :: (packet: *Packet, message: *Sync_Request_Message) {
+    packet_write(packet, Message_Id.Sync_Request);
+}
+
+packet_read_sync_request_message :: (packet: *Packet) -> Sync_Request_Message {
+    message: Sync_Request_Message = ---;
+    return message;
+}
+
+send_sync_request_message :: (connection: *Virtual_Connection, message: Sync_Request_Message) {
+    packet: Packet;
+    packet_write_sync_request_message(*packet, *message);
+    send_packet(connection, *packet);
+}
+
+
 parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
     packet_body_size := packet.header.packet_size - PACKET_HEADER_SIZE;
     
@@ -141,9 +170,9 @@ parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
         message_id: Message_Id = packet_read(packet, Message_Id);
 
         switch message_id {
-        case .Create_File;
-            message: Create_File_Message = packet_read_create_file_message(packet);
-            callbacks.on_create_file(callbacks.user_pointer, *message);
+        case .File_Info;
+            message: File_Info_Message = packet_read_file_info_message(packet);
+            callbacks.on_file_info(callbacks.user_pointer, *message);
 
         case .File_Content;
             message: File_Content_Message = packet_read_file_content_message(packet);
@@ -152,6 +181,10 @@ parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
         case .File_Request;
             message: File_Request_Message = packet_read_file_request_message(packet);
             callbacks.on_file_request(callbacks.user_pointer, *message);
+
+        case .Sync_Request;
+            message: Sync_Request_Message = packet_read_sync_request_message(packet);
+            callbacks.on_sync_request(callbacks.user_pointer, *message);
             
         case;
             print("Invalid message id, no messages defined with id: %\n", cast(s64) message_id);

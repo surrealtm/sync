@@ -25,10 +25,8 @@ Sync :: struct {
     client_thread: Thread;
 
     scratch_arena:  Memory_Arena;
-    scratch_allocator: Allocator;
+    scratch_allocator: Allocator; // @Cleanup right now this allocator (or rather the underlying memory arena) never actually gets reset, since the multithreaded nature of this program might lead to issues. We probably actually need an arena for each thread anyway, and therefore have both the server and the client create one for themselves.
 }
-
-
 
 sync_server :: (sync: *Sync) -> u32 {
     if !create_server(*sync.server, *sync.scratch_arena, *sync.scratch_allocator) return -1;

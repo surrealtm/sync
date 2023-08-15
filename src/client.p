@@ -30,7 +30,7 @@ update_client :: (client: *Client) {
 
 connect_client :: (client: *Client, host: string) -> bool {
     client.message_callbacks.user_pointer    = client;
-    client.message_callbacks.on_create_file  = client_on_create_file;
+    client.message_callbacks.on_file_info    = client_on_file_info;
     client.message_callbacks.on_file_content = client_on_file_content;
     
     success := create_client_connection(*client.connection, .TCP, host, SYNC_PORT);
@@ -49,8 +49,27 @@ disconnect_client :: (client: *Client) {
 
 /* Message Callbacks */
 
-client_on_create_file :: (client: *Client, message: *Create_File_Message) {
-    register_file_id(*client.registry, message.file_id, message.file_size, message.file_path);
+client_on_file_info :: (client: *Client, message: *File_Info_Message) {
+    entry := get_file_entry_by_id(*client.registry, message.file_id);
+    action_prefix: string;
+    
+    if !entry {
+        entry = create_file_entry(*client.registry);
+        action_prefix = "Created";
+    } else {
+        action_prefix = "Replaced";
+    }
+
+    if !message.truncate_file action_prefix = "Registered";
+
+    entry.file_id   = message.file_id;
+    entry.file_size = message.file_size;
+    entry.file_path = copy_string(message.file_path, Default_Allocator);
+      
+    print("% local file '%' ('%', % bytes).\n", action_prefix, entry.file_path, entry.file_id, entry.file_size);
+
+    complete_path := get_registry_file_path(*client.registry, message.file_path);
+    if message.truncate_file   write_file(complete_path, "", false); // Create a new file or truncate an existing one, if this is the start of a file transfer
 }
 
 client_on_file_content :: (client: *Client, message: *File_Content_Message) {
@@ -61,8 +80,10 @@ client_on_file_content :: (client: *Client, message: *File_Content_Message) {
         return;
     }
 
-    file_information, success := get_file_information(entry.file_path);
+    complete_path := get_registry_file_path(*client.registry, entry.file_path);
+
+    file_information, success := get_file_information(complete_path);
 
     assert(success && file_information.file_size == message.file_offset, "Invalid File Entry");
-    write_file(entry.file_path, message.file_data, true);
+    write_file(complete_path, message.file_data, true);
 }

@@ -29,6 +29,17 @@ destroy_file_registry :: (registry: *File_Registry) {
     array_clear(*registry.entries);
 }
 
+list_file_registry :: (registry: *File_Registry, prefix: string) {
+    print("=== FILES: % (%) ===\n", prefix, registry.folder_path);
+
+    for i := 0; i < registry.entries.count; ++i {
+        entry := array_get(*registry.entries, i);
+        print("  %: '%' (% bytes)\n", entry.file_id, entry.file_path, entry.file_size);
+    }
+
+    print("=== FILES: % (%) ===\n", prefix, registry.folder_path);
+}
+
 
 register_loose_files :: (registry: *File_Registry) {
     // Go through all files in the registry folder and create an entry for them, if they do not already have one.
@@ -65,24 +76,6 @@ create_file_entry :: (registry: *File_Registry) -> *File_Entry {
     entry.file_id = registry.id_counter;
     ++registry.id_counter;
     return entry;
-}
-
-register_file_id :: (registry: *File_Registry, file_id: File_Id, file_size: u64, file_path: string) {
-    entry := get_file_entry_by_id(registry, file_id);
-
-    if !entry {
-        entry = create_file_entry(registry);
-        entry.file_id   = file_id;
-        entry.file_size = file_size;
-        entry.file_path = copy_string(get_registry_file_path(registry, file_path), Default_Allocator);
-        print("Creating the local file '%' ('%', % bytes).\n", entry.file_path, entry.file_id, entry.file_size);
-    } else {
-        entry.file_size = file_size;
-        entry.file_path = copy_string(get_registry_file_path(registry, file_path), Default_Allocator);
-        print("Replacing the local file '%' ('%', % bytes).\n", entry.file_path, entry.file_id, entry.file_size);
-    }
-
-    write_file(entry.file_path, "", false); // Create an empty new file
 }
 
 
