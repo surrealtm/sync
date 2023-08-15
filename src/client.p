@@ -7,8 +7,8 @@ Client :: struct {
 
 /* General client setup, called once */
 
-create_client :: (client: *Client, scratch_arena: *Memory_Arena) -> bool {
-    create_file_registry(*client.registry, scratch_arena, "run_tree/client");
+create_client :: (client: *Client, scratch_arena: *Memory_Arena, scratch_allocator: *Allocator) -> bool {
+    create_file_registry(*client.registry, scratch_arena, scratch_allocator, "run_tree/client");
     return connect_client(client, "localhost");
 }
 
@@ -20,7 +20,9 @@ destroy_client :: (client: *Client) {
 update_client :: (client: *Client) {
     if client.connection.status == .Closed return;
     
-    while read_packet(*client.connection) parse_all_packet_messages(*client.connection.incoming_packet, *client.message_callbacks);
+    while read_packet(*client.connection) {
+        parse_all_packet_messages(*client.connection.incoming_packet, *client.message_callbacks);
+    }
 }
 
 
@@ -33,9 +35,6 @@ connect_client :: (client: *Client, host: string) -> bool {
     
     success := create_client_connection(*client.connection, .TCP, host, SYNC_PORT);
     if !success return false;
-
-    packet: Packet;
-    send_packet(*client.connection, *packet);
     
     print("Successful client start.\n");
     return true;
@@ -51,21 +50,7 @@ disconnect_client :: (client: *Client) {
 /* Message Callbacks */
 
 client_on_create_file :: (client: *Client, message: *Create_File_Message) {
-    entry := get_file_entry_by_id(*client.registry, message.file_id);
-
-    if !entry {
-        entry = create_file_entry(*client.registry);
-        entry.file_id   = message.file_id;
-        entry.file_size = message.file_size;
-        entry.file_path = copy_string(get_registry_file_path(*client.registry, message.file_path), Default_Allocator);
-        print("Creating the local file '%' ('%', % bytes).\n", entry.file_path, entry.file_id, entry.file_size);
-    } else {
-        entry.file_size = message.file_size;
-        entry.file_path = copy_string(get_registry_file_path(*client.registry, message.file_path), Default_Allocator);
-        print("Replacing the local file '%'\n", entry.file_path);
-    }
-
-    write_file(entry.file_path, "", false); // Create an empty new file
+    register_file_id(*client.registry, message.file_id, message.file_size, message.file_path);
 }
 
 client_on_file_content :: (client: *Client, message: *File_Content_Message) {

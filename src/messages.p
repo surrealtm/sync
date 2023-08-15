@@ -13,6 +13,13 @@ File_Content_Message :: struct {
     file_data: string; // The actual bytes of the file. The array is sized to exactly fit the number of bytes sent in this message
 }
 
+File_Request_Message :: struct {
+    // In the future this could maybe also allow requesting by id for less overhead, less typing required by
+    // the user as well as less ambigouity, though that should probably never happen with complete file
+    // paths anyway?
+    file_path: string;
+}
+
 
 send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *File_Entry) {
     content, success := read_file(get_registry_file_path(registry, file.file_path));
@@ -35,6 +42,11 @@ send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *
     }    
 }
 
+request_file :: (connection: *Virtual_Connection, file_path: string) {
+    send_file_request_message(connection, .{ file_path } );
+}
+
+
 
 /* Below this is the boilerplate code for serialization code for the above defined messages. It implements
  * writing messages to packets and reading messages back from packets, as well as code to automatically
@@ -47,14 +59,16 @@ send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *
 // Eventually, this enum should be sized to barely fit all elements, e.g. right now a u8 would suffice. Since
 // enums currently do not support changing the internal bit representation, this will have to wait.
 Message_Id :: enum {
-    Create_File  :: 1;
+    Create_File  :: 1; // @Cleanup rename to File_Create or something?
     File_Content :: 2;
+    File_Request :: 3;
 }
 
 Message_Callbacks :: struct {
-    user_pointer: *void;
-    on_create_file: (*void, *Create_File_Message);
+    user_pointer:     *void;
+    on_create_file:  (*void, *Create_File_Message);
     on_file_content: (*void, *File_Content_Message);
+    on_file_request: (*void, *File_Request_Message);
 }
 
 
@@ -102,6 +116,24 @@ send_file_content_message :: (connection: *Virtual_Connection, message: File_Con
 }
 
 
+packet_write_file_request_message :: (packet: *Packet, message: *File_Request_Message) {
+    packet_write(packet, Message_Id.File_Request);
+    packet_write_string(packet, message.file_path);
+}
+
+packet_read_file_request_message :: (packet: *Packet) -> File_Request_Message {
+    message: File_Request_Message = ---;
+    message.file_path = packet_read_string_view(packet);
+    return message;
+}
+
+send_file_request_message :: (connection: *Virtual_Connection, message: File_Request_Message) {
+    packet: Packet;
+    packet_write_file_request_message(*packet, *message);
+    send_packet(connection, *packet);
+}
+
+
 parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
     packet_body_size := packet.header.packet_size - PACKET_HEADER_SIZE;
     
@@ -116,6 +148,10 @@ parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
         case .File_Content;
             message: File_Content_Message = packet_read_file_content_message(packet);
             callbacks.on_file_content(callbacks.user_pointer, *message);
+
+        case .File_Request;
+            message: File_Request_Message = packet_read_file_request_message(packet);
+            callbacks.on_file_request(callbacks.user_pointer, *message);
             
         case;
             print("Invalid message id, no messages defined with id: %\n", cast(s64) message_id);

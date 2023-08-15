@@ -1,0 +1,10 @@
+This is an example file,
+something to test the basic functionality
+
+
+of this program, which surely will work first
+try, because i never make mistakes.
+
+Also look at these cool characters: #הצü.
+And a questionmark: ?
+And the french language: ך, ב, א.
