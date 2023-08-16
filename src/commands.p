@@ -41,7 +41,7 @@ get_next_word_in_input :: (input: *string) -> string {
 push_file :: (client: *Client, file_path: string) {
     file_info, success := get_file_information(file_path);
     if !success {
-        print("The local file '%' cannot be opened.\n");
+        print("The local file '%' cannot be opened.\n", file_path);
         return;
     }
 

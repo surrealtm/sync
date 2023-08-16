@@ -95,7 +95,8 @@ client_on_file_content :: (client: *Client, message: *File_Content_Message) {
     complete_path := get_registry_file_path(*client.registry, entry.file_path);
 
     file_information, success := get_file_information(complete_path);
+    assert(success && file_information.file_size == message.file_offset, "Invalid File Content Offset");
 
-    assert(success && file_information.file_size == message.file_offset, "Invalid File Entry");
-    write_file(complete_path, message.file_data, true);
+    success = write_file(complete_path, message.file_data, true);
+    assert(success, "Invalid File Entry Path");
 }

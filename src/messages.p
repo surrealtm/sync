@@ -41,18 +41,13 @@ send_file_content :: (connection: *Virtual_Connection, registry: *File_Registry,
     assert(success, "Could not open the local file for transfer");
     
     content_offset := 0;
-    batch_size := PACKET_BODY_SIZE - 24; // 24 Bytes are required for the file content message itself (file id, offset, and byte count)
-
+    batch_size := PACKET_BODY_SIZE - 32; // 32 Bytes are required for the file content message itself (message id, file id, offset, and byte count)
+    
     while content_offset < content.count {
         message_size := min(content.count - content_offset, batch_size);
         send_file_content_message(connection, .{ file.file_id, content_offset, substring_view(content, content_offset, content_offset + message_size) });
         content_offset += message_size;
     }
-}
-
-send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *File_Entry) {
-    send_file_info_message(connection, .{ file.file_id, file.file_size, file.file_path, true });
-    send_file_content(connection, registry, file);
 }
 
 request_file :: (connection: *Virtual_Connection, file_path: string) {
@@ -203,30 +198,59 @@ parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
     while packet.body_offset < packet_body_size {
         message_id: Message_Id = packet_read(packet, Message_Id);
 
+        no_such_callback_defined := false;
+        
         switch message_id {
         case .File_Info;
-            message: File_Info_Message = packet_read_file_info_message(packet);
+            if !callbacks.on_file_info {
+                no_such_callback_defined = true;
+                break;
+            }
+
+            message: File_Info_Message = packet_read_file_info_message(packet);                
             callbacks.on_file_info(callbacks.user_pointer, *message);
 
         case .File_Content;
+            if !callbacks.on_file_content {
+                no_such_callback_defined = true;
+                break;
+            }
+
             message: File_Content_Message = packet_read_file_content_message(packet);
             callbacks.on_file_content(callbacks.user_pointer, *message);
 
         case .File_Request;
+            if !callbacks.on_file_request {
+                no_such_callback_defined = true;
+                break;
+            }
+
             message: File_Request_Message = packet_read_file_request_message(packet);
             callbacks.on_file_request(callbacks.user_pointer, *message);
 
         case .File_Registration;
+            if !callbacks.on_file_registration {
+                no_such_callback_defined = true;
+                break;
+            }
+
             message: File_Registration_Message = packet_read_file_registration_message(packet);
             callbacks.on_file_registration(callbacks.user_pointer, *message);
 
         case .Sync_Request;
+            if !callbacks.on_sync_request {
+                no_such_callback_defined = true;
+                break;
+            }
+
             message: Sync_Request_Message = packet_read_sync_request_message(packet);
             callbacks.on_sync_request(callbacks.user_pointer, *message);
             
         case;
-            print("Invalid message id, no messages defined with id: %\n", cast(s64) message_id);
+            print("Invalid message id, no messages defined with id: '%'\n", cast(s64) message_id);
             packet.body_offset = packet_body_size; // Skip to the end of the packet so that the outer while loop exits
         }
+
+        if no_such_callback_defined print("No message callback for id '%' was set.\n", cast(s64) message_id);
     }
 }
