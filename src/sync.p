@@ -11,10 +11,12 @@
 #load "messages.p";
 #load "registry.p";
 
-BUILD_SERVER :: true;
-BUILD_CLIENT :: true;
-
 SYNC_PORT :: 0xfefe;
+
+Sync_Status :: enum {
+    Closed;
+    Running;
+}
 
 Sync :: struct {
     quit: bool;
@@ -24,32 +26,52 @@ Sync :: struct {
     server_thread: Thread;
     client_thread: Thread;
 
+    server_status: Sync_Status = .Closed;
+    client_status: Sync_Status = .Closed;
+    
     scratch_arena:  Memory_Arena;
     scratch_allocator: Allocator; // @Cleanup right now this allocator (or rather the underlying memory arena) never actually gets reset, since the multithreaded nature of this program might lead to issues. We probably actually need an arena for each thread anyway, and therefore have both the server and the client create one for themselves.
 }
 
-sync_server :: (sync: *Sync) -> u32 {
+sync_server_loop :: (sync: *Sync) -> u32 {
     if !create_server(*sync.server, *sync.scratch_arena, *sync.scratch_allocator) return -1;
 
+    sync.server_status = .Running;
+    
     while !sync.quit && sync.server.listener.status != .Closed {
         update_server(*sync.server);
         Sleep(16);
     }
+
+    sync.server_status = .Closed;
     
     destroy_server(*sync.server);
     return 0;
 }
 
-sync_client :: (sync: *Sync) -> u32 {
+start_sync_server :: (sync: *Sync) {
+    sync.server_thread = create_thread(sync_server_loop, sync);
+}
+
+sync_client_loop :: (sync: *Sync) -> u32 {
     if !create_client(*sync.client, *sync.scratch_arena, *sync.scratch_allocator) return -1;
 
+    sync.client_status = .Running;
+    
     while !sync.quit && sync.client.connection.status != .Closed {
         update_client(*sync.client);
         Sleep(16);
     }
 
+    sync.client_status = .Closed;
+    
     destroy_client(*sync.client);
     return 0;
+}
+
+start_sync_client :: (sync: *Sync, host: string) {
+    sync.client.host = host;
+    sync.client_thread = create_thread(sync_client_loop, sync);
 }
 
 sync :: (argcount: s64, args: *cstring) -> s64 {
@@ -59,23 +81,13 @@ sync :: (argcount: s64, args: *cstring) -> s64 {
     create_memory_arena(*sync.scratch_arena, 4 * MEGABYTES);
     sync.scratch_allocator = memory_arena_allocator(*sync.scratch_arena);
     
-    // Disable the input echo mode, since we will echo input back to the user ourselves.
-    SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
-
-    // Create the threads for the server and the client. Later on, these should probably be created dynamically,
-    // maybe defined by some config whether to start the server / client.
-#if BUILD_SERVER {
-    sync.server_thread = create_thread(sync_server, *sync);
-}
-
-#if BUILD_CLIENT {
-    sync.client_thread = create_thread(sync_client, *sync);
-}
-
+    // Disable the input echo mode, since we will echo input back to the user ourselves. This is only nice for
+    // CmdX, but completely hides the current text input for other terminals...
+    //SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+    
     // The main thread just waits for command input from the user until the user quits the application.
     while !sync.quit {
         input := read_line_from_stdin();
-        print("> '%'\n", input);
         parse_command(*sync, input);
     }
 

@@ -3,6 +3,7 @@ Client :: struct {
     message_callbacks: Message_Callbacks;
     registry: File_Registry;
 
+    host: string = "localhost";
     file_paths_to_send: [..]string; // A list of file paths which the client is trying to send, but did not yet receive a file id from the server. Once the server has assigned an id to that path, the id is sent to the client with a File_Info, and the client can begin sending the file
 }
 
@@ -11,7 +12,7 @@ Client :: struct {
 
 create_client :: (client: *Client, scratch_arena: *Memory_Arena, scratch_allocator: *Allocator) -> bool {
     create_file_registry(*client.registry, scratch_arena, scratch_allocator, "."); // The registry folder of the client should always be the working directory, since the client should be run inside the directory in which the interesting local files are.
-    return connect_client(client, "localhost");
+    return connect_client(client);
 }
 
 destroy_client :: (client: *Client) {
@@ -30,15 +31,15 @@ update_client :: (client: *Client) {
 
 /* Network management */
 
-connect_client :: (client: *Client, host: string) -> bool {
+connect_client :: (client: *Client) -> bool {
     client.message_callbacks.user_pointer    = client;
     client.message_callbacks.on_file_info    = client_on_file_info;
     client.message_callbacks.on_file_content = client_on_file_content;
     
-    success := create_client_connection(*client.connection, .TCP, host, SYNC_PORT);
+    success := create_client_connection(*client.connection, .TCP, client.host, SYNC_PORT);
     if !success return false;
     
-    print("Successfully connected to the server on %:%.\n", host, SYNC_PORT);
+    print("Successfully connected to the server on %:%.\n", client.host, SYNC_PORT);
     return true;
 }
 

@@ -76,10 +76,17 @@ parse_command :: (sync: *Sync, input: string) {
     } else if compare_strings(command_name, "push") {
         push_file(*sync.client, array_get_value(*command_arguments, 0));
     } else if compare_strings(command_name, "list") {
-        list_file_registry(*sync.server.registry, "Server");
-        list_file_registry(*sync.client.registry, "Client");
+        if sync.server_status == .Running list_file_registry(*sync.server.registry, "Server");
+        if sync.client_status == .Running list_file_registry(*sync.client.registry, "Local");
     } else if compare_strings(command_name, "sync") {
         sync_file_registry(*sync.client.connection);
+    } else if compare_strings(command_name, "serve") {
+        if sync.server_status == .Closed    start_sync_server(sync);
+    } else if compare_strings(command_name, "connect") {
+        if sync.client_status == .Closed {
+            host := array_get_value(*command_arguments, 0);
+            start_sync_client(sync, host);
+        }
     } else
         print("Unknown command '%'. Try 'help'.\n", command_name);
 }

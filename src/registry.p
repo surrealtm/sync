@@ -31,14 +31,12 @@ destroy_file_registry :: (registry: *File_Registry) {
 }
 
 list_file_registry :: (registry: *File_Registry, prefix: string) {
-    print("=== FILES: % (%) ===\n", prefix, registry.folder_path);
+    print("% Registry:\n", prefix, registry.folder_path);
 
     for i := 0; i < registry.entries.count; ++i {
         entry := array_get(*registry.entries, i);
         print("  %: '%' (% bytes)\n", entry.file_id, entry.file_path, entry.file_size);
     }
-
-    print("=== FILES: % (%) ===\n", prefix, registry.folder_path);
 }
 
 
