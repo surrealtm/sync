@@ -38,6 +38,20 @@ get_next_word_in_input :: (input: *string) -> string {
 }
 
 
+push_file :: (client: *Client, file_path: string) {
+    file_info, success := get_file_information(file_path);
+    if !success {
+        print("The local file '%' cannot be opened.\n");
+        return;
+    }
+
+    file_path := copy_string(file_path, Default_Allocator); // @@Leak
+
+    register_file(*client.connection, file_path, file_info.file_size);
+    array_add(*client.file_paths_to_send, file_path);
+}
+
+
 parse_command :: (sync: *Sync, input: string) {
     // Parse the actual command name
     command_name := get_next_word_in_input(*input);
@@ -53,11 +67,14 @@ parse_command :: (sync: *Sync, input: string) {
 
     // Dispatch the actual command. Since this application will only support a few commands, there is no
     // need for something fancy here.
-    
+
+    // @Cleanup proper command argument checks here
     if compare_strings(command_name, "quit") {
         sync.quit = true;
     } else if compare_strings(command_name, "pull") {
-        request_file(*sync.client.connection, array_get_value(*command_arguments, 0)); // @Cleanup proper command args check.
+        request_file(*sync.client.connection, array_get_value(*command_arguments, 0));
+    } else if compare_strings(command_name, "push") {
+        push_file(*sync.client, array_get_value(*command_arguments, 0));
     } else if compare_strings(command_name, "list") {
         list_file_registry(*sync.server.registry, "Server");
         list_file_registry(*sync.client.registry, "Client");

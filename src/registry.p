@@ -22,6 +22,7 @@ create_file_registry :: (registry: *File_Registry, scratch_arena: *Memory_Arena,
     registry.folder_path       = folder;
 
     create_folder(registry.folder_path); // Make sure the registry folder actually exists, so that future io operations can just assume this is the case
+    print("Created the local file registry in '%'.\n", folder);
 }
 
 destroy_file_registry :: (registry: *File_Registry) {

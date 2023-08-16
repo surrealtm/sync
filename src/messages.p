@@ -21,22 +21,25 @@ File_Request_Message :: struct {
     file_path: string;
 }
 
+File_Registration_Message :: struct {
+    // When a client wants to push a local file, they must first register the file on the server to obtain
+    // an id for them, since the file transfer as well as the registries depend on that.
+    file_path: string;
+    file_size: u64;
+}
+
 Sync_Request_Message :: struct {
     unused: u64; // The compiler currently does not like empty structs, so just throw this in here
 }
 
 
-send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *File_Entry) {
-    content, success := read_file(get_registry_file_path(registry, file.file_path));
+send_file_content :: (connection: *Virtual_Connection, registry: *File_Registry, file: *File_Entry) {
+    local_file_path := get_registry_file_path(registry, file.file_path);
+
+    content, success := read_file(local_file_path);
     defer free_file_data(content);
-
-    if !success {
-        print("Failed to read local file '%' for transfer.\n", file.file_path);
-        return;
-    }
+    assert(success, "Could not open the local file for transfer");
     
-    send_file_info_message(connection, .{ file.file_id, file.file_size, file.file_path, true });
-
     content_offset := 0;
     batch_size := PACKET_BODY_SIZE - 24; // 24 Bytes are required for the file content message itself (file id, offset, and byte count)
 
@@ -44,11 +47,20 @@ send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *
         message_size := min(content.count - content_offset, batch_size);
         send_file_content_message(connection, .{ file.file_id, content_offset, substring_view(content, content_offset, content_offset + message_size) });
         content_offset += message_size;
-    }    
+    }
+}
+
+send_file :: (connection: *Virtual_Connection, registry: *File_Registry, file: *File_Entry) {
+    send_file_info_message(connection, .{ file.file_id, file.file_size, file.file_path, true });
+    send_file_content(connection, registry, file);
 }
 
 request_file :: (connection: *Virtual_Connection, file_path: string) {
     send_file_request_message(connection, .{ file_path } );
+}
+
+register_file :: (connection: *Virtual_Connection, file_path: string, file_size: u64) {
+    send_file_registration_message(connection, .{ file_path, file_size } );
 }
 
 sync_file_registry :: (connection: *Virtual_Connection) {
@@ -68,18 +80,20 @@ sync_file_registry :: (connection: *Virtual_Connection) {
 // Eventually, this enum should be sized to barely fit all elements, e.g. right now a u8 would suffice. Since
 // enums currently do not support changing the internal bit representation, this will have to wait.
 Message_Id :: enum {
-    File_Info    :: 1;
-    File_Content :: 2;
-    File_Request :: 3;
-    Sync_Request :: 4;
+    File_Info         :: 1;
+    File_Content      :: 2;
+    File_Request      :: 3;
+    Sync_Request      :: 4;
+    File_Registration :: 5;
 }
 
 Message_Callbacks :: struct {
-    user_pointer:     *void;
-    on_file_info:    (*void, *File_Info_Message);
-    on_file_content: (*void, *File_Content_Message);
-    on_file_request: (*void, *File_Request_Message);
-    on_sync_request: (*void, *Sync_Request_Message);
+    user_pointer:          *void;
+    on_file_info:         (*void, *File_Info_Message);
+    on_file_content:      (*void, *File_Content_Message);
+    on_file_request:      (*void, *File_Request_Message);
+    on_sync_request:      (*void, *Sync_Request_Message);
+    on_file_registration: (*void, *File_Registration_Message);
 }
 
 
@@ -147,6 +161,26 @@ send_file_request_message :: (connection: *Virtual_Connection, message: File_Req
 }
 
 
+packet_write_file_registration_message :: (packet: *Packet, message: *File_Registration_Message) {
+    packet_write(packet, Message_Id.File_Registration);
+    packet_write_string(packet, message.file_path);
+    packet_write(packet, message.file_size);
+}
+
+packet_read_file_registration_message :: (packet: *Packet) -> File_Registration_Message {
+    message: File_Registration_Message = ---;
+    message.file_path = packet_read_string_view(packet);
+    message.file_size = packet_read(packet, u64);
+    return message;
+}
+
+send_file_registration_message :: (connection: *Virtual_Connection, message: File_Registration_Message) {
+    packet: Packet;
+    packet_write_file_registration_message(*packet, *message);
+    send_packet(connection, *packet);
+}
+
+
 packet_write_sync_request_message :: (packet: *Packet, message: *Sync_Request_Message) {
     packet_write(packet, Message_Id.Sync_Request);
 }
@@ -181,6 +215,10 @@ parse_all_packet_messages :: (packet: *Packet, callbacks: *Message_Callbacks) {
         case .File_Request;
             message: File_Request_Message = packet_read_file_request_message(packet);
             callbacks.on_file_request(callbacks.user_pointer, *message);
+
+        case .File_Registration;
+            message: File_Registration_Message = packet_read_file_registration_message(packet);
+            callbacks.on_file_registration(callbacks.user_pointer, *message);
 
         case .Sync_Request;
             message: Sync_Request_Message = packet_read_sync_request_message(packet);
